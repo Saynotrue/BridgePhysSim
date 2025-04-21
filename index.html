@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <title>Bridge Wind Simulation</title>
+  <style>
+    body {
+      margin: 0;
+      overflow: hidden;
+    }
+  </style>
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.161.0/build/three.module.js",
+        "three/examples/jsm/controls/OrbitControls": "https://cdn.jsdelivr.net/npm/three@0.161.0/examples/jsm/controls/OrbitControls.js",
+        "three/examples/jsm/controls/PointerLockControls": "https://cdn.jsdelivr.net/npm/three@0.161.0/examples/jsm/controls/PointerLockControls.js"
+      }
+    }
+  </script>
+</head>
+
+<body>
+  <div id="windControl"
+    style="position: absolute; top: 10px; left: 10px; z-index: 10; background-color: white; border-radius: 10px; padding: 10px; box-shadow: 0 2px 6px rgba(0,0,0,0.2);">
+    <label for="windSlider">💨 바람 세기: </label>
+    <input type="range" id="windSlider" min="0" max="10" step="0.1" value="2"
+      style="border-radius: 10px; background-color: white; height: 10px;">
+    <input type="number" id="windValue" min="0" max="10" step="0.1" value="2"
+      style="width: 50px; border-radius: 5px; border: 1px solid #ccc; padding: 5px; background-color: white;">
+  </div>
+  <button id="restartBtn"
+    style="position: absolute; top: 67.5px; left: 10px; z-index: 10;  background-color: white; border-radius: 10px; padding: 10px; box-shadow: 0 2px 6px rgba(0,0,0,0.2);">재시작</button>
+  <canvas id="canvas"></canvas>
+  <script type="module">
+    // PointerLock 적용 제외: 슬라이더, 입력창, 버튼
+    document.getElementById('windControl').addEventListener('click', e => e.stopPropagation());
+    document.getElementById('windValue').addEventListener('click', e => e.stopPropagation());
+    document.getElementById('restartBtn').addEventListener('click', e => e.stopPropagation());
+
+    // 클릭 시 PointerLockControls 활성화
+    document.body.addEventListener('click', () => {
+      controls.lock();
+    });
+
+    import * as THREE from 'three';
+    import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
+    import { PointerLockControls } from 'three/examples/jsm/controls/PointerLockControls';
+    import * as CANNON from 'https://cdn.jsdelivr.net/npm/cannon-es@0.20.0/dist/cannon-es.js';
+    import { createBoxes, boxes, boxBodies } from './boxes.js';
+
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+    const renderer = new THREE.WebGLRenderer({ canvas: document.getElementById('canvas') });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    document.body.appendChild(renderer.domElement);
+
+    const controls = new PointerLockControls(camera, document.body);
+    scene.add(controls.getObject());
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.05;
+
+    const light = new THREE.DirectionalLight(0xffffff, 1);
+    light.position.set(5, 10, 7.5);
+    scene.add(light);
+
+    const restartBtn = document.getElementById('restartBtn');
+
+    const windSlider = document.getElementById('windSlider');
+    const windValue = document.getElementById('windValue');
+
+    let windStrength = parseFloat(windSlider.value);
+
+    // 슬라이더 변경 → 입력창도 업데이트
+    windSlider.addEventListener('input', () => {
+      windStrength = parseFloat(windSlider.value);
+      windValue.value = windSlider.value;
+    });
+
+    // 입력창 직접 수정 → 슬라이더도 반영
+    windValue.addEventListener('input', () => {
+      windStrength = parseFloat(windValue.value);
+      windSlider.value = windValue.value;
+    });
+
+    // 재시작 함수
+    function restartSimulation() {
+      for (let i = 0; i < boxBodies.length; i++) {
+        const body = boxBodies[i];
+        const x = i * 1.2 - 1.2;
+        body.position.set(x, 1, 0);
+        body.velocity.set(0, 0, 0);
+        body.angularVelocity.set(0, 0, 0);
+        body.quaternion.set(0, 0, 0, 1);
+      }
+
+      // 카메라 위치 초기화
+      camera.position.set(0, 2, 5);
+
+      // 포인터락 컨트롤의 내부 방향 초기화
+      const camObj = controls.getObject();
+      camObj.rotation.set(0, 0, 0); // pitch/yaw 초기화
+    }
+
+    const keyState = {};
+    document.addEventListener('keydown', e => {
+      keyState[e.code] = true;
+
+      if (e.code === 'KeyR') {
+        restartSimulation();
+      }
+    });
+    document.addEventListener('keyup', e => keyState[e.code] = false);
+
+    function updateCameraPosition() {
+      const speed = 0.1;
+      const direction = new THREE.Vector3();
+
+      if (keyState['KeyS']) direction.z -= 0.5;
+      if (keyState['KeyW']) direction.z += 0.5;
+      if (keyState['KeyA']) direction.x -= 0.5;
+      if (keyState['KeyD']) direction.x += 0.5;
+      if (keyState['KeyQ']) direction.y += 0.5;
+      if (keyState['KeyE']) direction.y -= 0.5;
+
+      if (direction.lengthSq() === 0) return; // 이동 없음
+
+      direction.normalize();
+
+      // 카메라 방향 기준으로 변환
+      const moveVector = new THREE.Vector3();
+      controls.getDirection(moveVector);
+      moveVector.y = 0;
+      moveVector.normalize();
+
+      const rightVector = new THREE.Vector3();
+      rightVector.crossVectors(moveVector, camera.up).normalize();
+
+      const upVector = new THREE.Vector3(0, 1, 0); // 위쪽 방향
+
+      const finalMove = new THREE.Vector3();
+      finalMove.addScaledVector(moveVector, direction.z);   // 앞으로/뒤로
+      finalMove.addScaledVector(rightVector, direction.x);  // 좌우
+      finalMove.addScaledVector(upVector, direction.y);     // 위아래 추가
+
+      finalMove.normalize();
+      controls.getObject().position.add(finalMove.multiplyScalar(speed));
+    }
+
+    // 버튼 클릭 이벤트 등록
+    restartBtn.addEventListener('click', restartSimulation);
+
+    const world = new CANNON.World({
+      gravity: new CANNON.Vec3(0, -9.82, 0),
+    });
+
+    const groundBody = new CANNON.Body({
+      mass: 0,
+      shape: new CANNON.Plane(),
+    });
+    groundBody.quaternion.setFromEuler(-Math.PI / 2, 0, 0); // 바닥을 XZ 평면으로 회전
+    world.addBody(groundBody);
+
+    const groundMesh = new THREE.Mesh(
+      new THREE.PlaneGeometry(100, 100),
+      new THREE.MeshStandardMaterial({ color: 0x808080 })
+    );
+    groundMesh.rotation.x = -Math.PI / 2;
+    scene.add(groundMesh);
+
+    camera.position.set(0, 2, 5);
+
+    const clock = new THREE.Clock();
+
+    createBoxes(scene, world);
+
+    function animate() {
+      requestAnimationFrame(animate);
+      const delta = clock.getDelta();
+
+      updateCameraPosition();
+
+      // 렌더링
+      renderer.render(scene, camera);
+
+      const windStrength = parseFloat(windSlider.value);
+      const windForce = new CANNON.Vec3(-windStrength, 0, 0);
+      boxBodies.forEach((body) => {
+        body.applyForce(windForce, body.position);
+      });
+
+      world.step(1 / 60, delta, 3);
+
+      for (let i = 0; i < boxes.length; i++) {
+        boxes[i].position.copy(boxBodies[i].position);
+        boxes[i].quaternion.copy(boxBodies[i].quaternion);
+      }
+
+      renderer.render(scene, camera);
+    }
+
+    animate();
+  </script>
+</body>
+
+</html>
