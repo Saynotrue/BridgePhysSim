@@ -48,7 +48,7 @@
     import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
     import { PointerLockControls } from 'three/examples/jsm/controls/PointerLockControls';
     import * as CANNON from 'https://cdn.jsdelivr.net/npm/cannon-es@0.20.0/dist/cannon-es.js';
-    import { createBoxes, boxes, boxBodies } from './boxes.js';
+    import { createBridgeParts, parts, partBodies } from './boxes.js';
 
     const scene = new THREE.Scene();
     const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
@@ -86,8 +86,8 @@
 
     // 재시작 함수
     function restartSimulation() {
-      for (let i = 0; i < boxBodies.length; i++) {
-        const body = boxBodies[i];
+      for (let i = 0; i < partBodies.length; i++) {
+        const body = partBodies[i];
         const x = i * 1.2 - 1.2;
         body.position.set(x, 1, 0);
         body.velocity.set(0, 0, 0);
@@ -173,7 +173,7 @@
 
     const clock = new THREE.Clock();
 
-    createBoxes(scene, world);
+    createBridgeParts(scene, world);
 
     function animate() {
       requestAnimationFrame(animate);
@@ -186,15 +186,15 @@
 
       const windStrength = parseFloat(windSlider.value);
       const windForce = new CANNON.Vec3(-windStrength, 0, 0);
-      boxBodies.forEach((body) => {
+      partBodies.forEach((body) => {
         body.applyForce(windForce, body.position);
       });
 
       world.step(1 / 60, delta, 3);
 
-      for (let i = 0; i < boxes.length; i++) {
-        boxes[i].position.copy(boxBodies[i].position);
-        boxes[i].quaternion.copy(boxBodies[i].quaternion);
+      for (let i = 0; i < parts.length; i++) {
+        parts[i].position.copy(partBodies[i].position);
+        parts[i].quaternion.copy(partBodies[i].quaternion);
       }
 
       renderer.render(scene, camera);
